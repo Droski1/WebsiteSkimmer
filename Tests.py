@@ -1,29 +1,43 @@
-import ScrapingUtils
-from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
-import requests
-import time
-import tqdm
 import SheetUtils
 import gspread
-from datetime import datetime
 import concurrent.futures
-import requests
+import concurrent.futures
+import threading
 import time
-from datetime import datetime
+import concurrent.futures
 import tqdm
-import Utils
+from datetime import datetime
+import requests
 
-import atexit
+# Initialize the gspread client and open the spreadsheet
+gc = gspread.service_account()
+spreadsheet = gc.open_by_url(
+    'https://docs.google.com/spreadsheets/d/1G-uQru3uOSxpkpz_NhPzv3w-2_4huRq0OKSI0O2rxE4/edit?usp=sharing')
 
-def save_data():
+# Create a lock for synchronizing the saving process
+save_lock = threading.Lock()
+def Purge_Data(sheet):
+    print("### PURGING DATA ###")
+    worksheet = sheet.get_worksheet(2)  # Assuming the first worksheet
+    range_to_clear = f'A3:Z{worksheet.row_count}'
+    num_rows = worksheet.row_count
+    worksheet.resize(rows=2)
+    worksheet.resize(rows=num_rows)
+
+def save_data(data, spreadsheet):
+    worksheet = spreadsheet.get_worksheet(2)
+    Purge_Data(spreadsheet)
+    data = sorted(data, key=lambda x: x[4])
     # Call the update_column function
-    SheetUtils.update_column(spreadsheet, 'A', [item[0] for item in dataBase])             # Updated Date
-    SheetUtils.update_column(spreadsheet, 'I', [item[2][55:][:-4] for item in dataBase])   # Preview
-    SheetUtils.update_column(spreadsheet, 'B', [item[3] for item in dataBase])             # Response (ms)
-    SheetUtils.update_column(spreadsheet, 'O', [item[1][166:][:-5] for item in dataBase])  # Video Link
-    SheetUtils.update_column(spreadsheet, 'C', [str(item[4]) for item in dataBase])        # ID
+    SheetUtils.update_column(worksheet, 'A', [item[0] for item in data])             # Updated Date
+    SheetUtils.update_column(worksheet, 'I', [item[2][55:][:-4] for item in data])   # Preview
+    SheetUtils.update_column(worksheet, 'B', [item[3] for item in data])             # Response (ms)
+    SheetUtils.update_column(worksheet, 'O', [item[1][166:][:-5] for item in data])  # Video Link
+    SheetUtils.update_column(worksheet, 'C', [item[4] for item in data])        # ID
+
+    worksheet.resize(len(data) + 1, 20)
 
     # Just to make the proper formatting, so that it resizes and sorts the data
     worksheet.columns_auto_resize(1, worksheet.col_count)
@@ -55,7 +69,7 @@ def GetMovieFromInternalID(id=1025):
         start_time = time.time()
         response = session.post("https://nepu.to/ajax/embed", data={"id": id})
         end_time = time.time()
-        elapsed_time_ms = str(round((end_time - start_time) * 1000, 2))
+        elapsed_time_ms = int(round((end_time - start_time) * 1000, 2))
 
         video = response.text.split('"')[5].replace('0x0x0', '_')
         preview = response.text.split('"')[7]
@@ -71,46 +85,46 @@ def GetMovieFromInternalID(id=1025):
             "0.0",\
             id
 
+def save_data_periodically(data, spreadsheet):
+    # Periodically save the data every 100-200 iterations
+    while True:
+        time.sleep(20)  # Adjust the sleep duration as needed
+        with save_lock:
+            save_data(data, spreadsheet)
 
 def run_parallel(worker_count=16, start_index=0, num_movies=500):
     dataBase = []
+
+    # Create a separate thread for periodically saving the data
+    save_thread = threading.Thread(target=save_data_periodically, args=(dataBase, spreadsheet))
+    save_thread.start()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = []
         for i in range(start_index, start_index + num_movies):
             futures.append(executor.submit(GetMovieFromInternalID, 1025 + i))
 
+            if len(futures) % 100 == 0 and 100 <= len(futures) <= 200:
+                with save_lock:
+                    # Acquire the lock before saving the data
+                    save_data(dataBase, spreadsheet)
+
         for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=num_movies):
             result = future.result()
             dataBase.append(result)
 
+    # Wait for the save thread to finish before returning the data
+    save_thread.join()
+
     return sorted(dataBase, key=lambda x: x[4])
 
 
-dataBase = run_parallel(48*4, 0, int(265572/32))
+
+dataBase = run_parallel(24, 0, int(265572/32))
 
 
 
 
-
-def Purge_Data(sheet):
-    print("### PURGING DATA ###")
-    worksheet = sheet.get_worksheet(2)  # Assuming the first worksheet
-    range_to_clear = f'A2:Z{worksheet.row_count}'
-    num_rows = worksheet.row_count
-    worksheet.resize(rows=2)
-    worksheet.resize(rows=num_rows)
-
-# Initialize the gspread client and open the spreadsheet
-gc = gspread.service_account()
-spreadsheet = gc.open_by_url(
-    'https://docs.google.com/spreadsheets/d/1G-uQru3uOSxpkpz_NhPzv3w-2_4huRq0OKSI0O2rxE4/edit?usp=sharing')
-
-# Dynamically Resizes the Sheet, so I dont need to :D
-# This might need to be fixed later if I wanted to do some internal testing
-Purge_Data(spreadsheet)
-worksheet = spreadsheet.get_worksheet(2)
-worksheet.resize(len(dataBase) + 1, 20)
 
 
 
