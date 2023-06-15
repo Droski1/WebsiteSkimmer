@@ -66,24 +66,34 @@ dataBase = []
 def GetMovieFromInternalID(id=1025):
     try:
         session = requests.Session()
+
+        # Measure the start time
         start_time = time.time()
+
+        # Make a POST request to retrieve movie data
         response = session.post("https://nepu.to/ajax/embed", data={"id": id})
+
+        # Measure the end time and calculate the elapsed time in milliseconds
         end_time = time.time()
         elapsed_time_ms = int(round((end_time - start_time) * 1000, 2))
 
+        # Extract relevant information from the response
         video = response.text.split('"')[5].replace('0x0x0', '_')
         preview = response.text.split('"')[7]
         formatted_datetime = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
+        # Return the extracted information as a tuple
         return formatted_datetime, video, preview, elapsed_time_ms, id
 
     except IndexError:
-        # Error Handling, so basically itll just give me an error if something odsent work out right
-        return "0000-00-00 00:00:00", \
-            "https://nepucdn.com/bVX5JOByJBKBPrvq7eWUrxv1lbhXno7LINhm4obOnrzCLyX7N1zi8QsLbjdCXGryiVCADOujfyg8LN2ViHTJBAA9rAgt3QANDwoe16PtdhEjgPck9mmOexwKufoPPMD8kKu2c9lUIiUd49nKK/ERROR.m3u8", \
-            "https://image.tmdb.org/t/p/w1920_and_h1080_multi_faces/ERROR.jpg", \
-            "0.0",\
+        # Error Handling, return a predefined error message if an IndexError occurs
+        return (
+            "0000-00-00 00:00:00",
+            "https://nepucdn.com/bVX5JOByJBKBPrvq7eWUrxv1lbhXno7LINhm4obOnrzCLyX7N1zi8QsLbjdCXGryiVCADOujfyg8LN2ViHTJBAA9rAgt3QANDwoe16PtdhEjgPck9mmOexwKufoPPMD8kKu2c9lUIiUd49nKK/ERROR.m3u8",
+            "https://image.tmdb.org/t/p/w1920_and_h1080_multi_faces/ERROR.jpg",
+            "0.0",
             id
+        )
 
 def save_data_periodically(data, spreadsheet):
     # Periodically save the data every 100-200 iterations
